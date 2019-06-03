@@ -56,13 +56,39 @@ for count, song in enumerate(favorites_sorted):
 	print("Track name: %s" %song.title)
 	print("Artist: %s" %song.user_id)
 	print("Track has been liked %d times" %song.favoritings_count)
-#STRATEGY
+
+
+# STRATEGY
 
 # create a list of all user ids of the artists we want to include in the graph
 
-# walk through the list of user ids, creating a list for each user containing their followers
+# walk through the list of user ids, creating a list for each user containing their followers, followings, likes
 
-# each user object should have the following fields: userid, follower_count, following_count
+# each user object should have the following fields: userid***, follower_count, following_count, maybe other things?
+
+
+# IDEAS
+
+# pull a bunch of songs, put them on a list, and extract artist user ids iterating through the list of songs using resolve.
+
+# iterate through user ids, extract followers, followings, and likes of each user, store their ids. 
+
+# study the follow/like relationship and try to predict links that will form (read the papers on graphs)
+
+# try to work with IDs because they are unique, we can export other information later from the id, walking through the lists
+
+# try using CVS file to store data
+
+
+# QUESIONS
+
+# How should we decide what subset of users we will work with?
+
+# How will we ignore the users that aren't in the subset?
+
+# How will we model the network as a graph?
+
+# Which algorithms should we use to analyze the relationships and make predictions?
 
 
 
