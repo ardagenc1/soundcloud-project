@@ -3,7 +3,7 @@ import soundcloud
 # create client object with app credentials
 client = soundcloud.Client(client_id='ifoUhYX2sDPbwwgaMnEYpMUXFBBWMQ3l')
 
-page_size = 200
+page_size = 50
 
 ## print a track title
 #track = client.get('/tracks/30709985')
@@ -49,9 +49,39 @@ for count,follower in enumerate(followers_sorted):
 
 # find tracks that a user has liked given user id.
 favorites = client.get('users/300870231/favorites', limit = page_size, linked_partitioning=1)
+link = favorites.next_href
+client.get(link)
 favorites_sorted = sorted(favorites.collection, key=lambda x: x.favoritings_count, reverse=True)
 
-for count, song in enumerate(favorites_sorted):
+#given userID, return a list of songs that the user has liked sorted by number of total likes
+userID = '300870231'
+
+def getLikes(userID):
+    favorites = client.get('users/' + userID + '/favorites', limit = page_size, linked_partitioning=1)
+    printFavorites(favorites)
+    try:
+        while (favorites.next_href):
+            favorites = client.get(favorites.next_href)
+            printFavorites(favorites)
+    except AttributeError:
+        return
+        
+
+def printFavorites(favs):
+    favs_sorted = sorted(favs.collection, key=lambda x: x.favoritings_count, reverse=True)
+    for count, song in enumerate(favs_sorted):
+        	print(count)
+        	print("Track name: %s" %song.title)
+        	print("Artist: %s" %song.user_id)
+        	print("Track has been liked %d times" %song.favoritings_count)   
+ 
+
+
+
+fav2_sorted = sorted(fav2.collection, key=lambda x: x.favoritings_count, reverse=True)
+
+
+for count, song in enumerate(fav2_sorted):
 	print(count)
 	print("Track name: %s" %song.title)
 	print("Artist: %s" %song.user_id)
