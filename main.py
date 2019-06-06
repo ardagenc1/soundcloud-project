@@ -103,23 +103,13 @@ def getUserFollow(userID, endNode, depth):
     follow = client.get("users/" + userID + "/" + endNode, limit = page_size, linked_partitioning = 1).fields()
     result = pd.DataFrame.from_dict(follow['collection']).set_index('id')
     processFollowResults(result, depth)
-    
-    
-    
-    for favorite in favorites.collection:
-    #create struct for favorite
-    #push struct to stack
     try:
-        while(favorites.next_href):
-            favorites = client.get(favorites.next_href)
-            # add curr part to pd Dataframe
-            for favorite in favorites.collection:
-                #create struct for favorite
-                #push struct to stack
-    except AttributeError:
-    #return ?
-    #return ?    
-
+        while(follow['next_href']):
+            follow = client.get(follow['next_href']).fields()
+            result = pd.DataFrame.from_dict(follow['collection']).set_index('id')
+            processFollowResults(result, depth)
+    except AttributeError:    
+    return
 
 
 def processFollowResults(result, depth):   
@@ -133,11 +123,13 @@ def processFollowResults(result, depth):
         
     
     
+# getUserFollowers(userID)
+# getUsersFollowing(userID)
+
 
 
 # getUserTracks(userdID)
-# getUserFollowers(userID)
-# getUsersFollowing(userID)
+
 # getTrackFavoriters(trackID)
 
 
