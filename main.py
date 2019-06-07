@@ -1,5 +1,7 @@
 import soundcloud
 import collections
+import numpy as np
+import pandas as pd
 
 
 userID = 300870231
@@ -12,10 +14,10 @@ maxUserCalls = 1000 / page_size
 maxTrackCalls = 2000 / page_size
 artist_threshold = 3.0
 depth = 2
+
 debug_counter = 0
 user_counter = 0
-
-get_counter = 0 
+get_counter = 0
 
 users = {}
 tracks = {}
@@ -28,27 +30,32 @@ track_fields = ["id","title","track_type", "genre", "user"]
 
 stack = []
 Entry = collections.namedtuple('Entry', 'Type Id Depth')
-
   
 
-def gatherData(userID,depth):
-    global stack
+def initialize(userID,depth):
+    global stack    
     getUser(userID)
     ent = Entry(Type=0, Id=userID, Depth=depth)
-    stack.append(ent)
+    stack.append(ent)    
+
+
+def gatherData():
+    global stack
     global debug_counter
     global user_counter
     global get_counter
+    write_counter = 0
     while stack:
-        print("the user counter is: {}".format(user_counter))
-        print("the debug counter is: {}".format(debug_counter))
-        print("the get counter is: {}".format(get_counter))
+        print("getUserLikes counter is: {}".format(user_counter))
+        #print("the debug counter is: {}".format(debug_counter))
+        print("API get counter is: {}".format(get_counter))
         if debug_counter == 5:
+                print("====================================================")
                 print("\n")
-                print("the len of stack is: {}".format(len(stack)))
-                print("len of users is: {}".format(len(users)))
-                print("len of tracks is {}".format(len(tracks)))
-                print("len of user_tracks: {}".format(len(user_tracks)))
+                print("Stack  len: {}".format(len(stack)))
+                print("Users  len: {}".format(len(users)))
+                print("Tracks len: {}".format(len(tracks)))
+                print("user_tracks: {}".format(len(user_tracks)))
                 print("====================================================")
                 debug_counter = 0
         buf = stack.pop()
@@ -57,19 +64,31 @@ def gatherData(userID,depth):
             continue
         else:
             if buf.Type == 0:
-                getUserLikes(buf.Id, buf.Depth)
+                getUserLikes(buf.Id, buf.Depth - 1)
                 if isArtist(buf.Id):
                     getUserFollow(buf.Id, 'followers', buf.Depth)
                     getArtistTracks(buf.Id, buf.Depth)
                 else:
-                    getUserFollow(buf.Id, 'followings', buf.Depth)
-                
+                    getUserFollow(buf.Id, 'followings', buf.Depth)           
             else:
-                getTrackFavoriters(buf.Id, buf.Depth - 1)
-        debug_counter += 1          
+                getTrackFavoriters(buf.Id, buf.Depth)
+        debug_counter += 1 
+        write_counter += 1
+        if write_counter == 100:
+            save_user_tracks()
+            write_counter = 0
                     
-                
 
+
+def save_user_tracks():
+    global user_tracks
+    y = np.array([np.array(xi) for xi in user_tracks ])
+    df = pd.DataFrame(data = y, columns = ["userID","trackID"])
+    t = pd.get_dummies(df,columns = ['trackID'],prefix='',prefix_sep='').groupby(['userID']).sum()
+    t.to_csv('/Users/Yahia/Desktop/EECS510/data.csv')
+    
+
+                
 def getUser(userID):
     global users
     global get_counter
@@ -80,7 +99,7 @@ def getUser(userID):
     
     
 def getUserFollow(userID, endNode, depth):
-    print("getUserFollow", userID)
+    #print("getUserFollow", userID)
     try:
         global maxUserCalls
         global get_counter
@@ -103,7 +122,7 @@ def getUserFollow(userID, endNode, depth):
 
 
 def getUserLikes(userID, depth):
-    print("getUserLikes", userID)
+    #print("getUserLikes", userID)
     try:
         global maxTrackCalls
         global user_counter
@@ -117,7 +136,7 @@ def getUserLikes(userID, depth):
             while(user_tracks_res['next_href'] and counter < maxTrackCalls):
                 user_tracks_res = client.get(user_tracks_res['next_href']).fields()
                 get_counter += 1
-                processUserTrackResults(user_tracks_res['collection'], depth)
+                processUserTrackResults(userID,user_tracks_res['collection'], depth)
                 counter = counter + 1
         except KeyError:
             return   
@@ -127,7 +146,7 @@ def getUserLikes(userID, depth):
 
 
 def getArtistTracks(userID, depth):
-    print("getArtistTrackset", userID)
+    #print("getArtistTrackset", userID)
     try:
         global maxTrackCalls
         global get_counter
@@ -139,7 +158,7 @@ def getArtistTracks(userID, depth):
             while(user_tracks_res['next_href'] and counter < maxTrackCalls):
                 user_tracks_res = client.get(user_tracks_res['next_href']).fields()
                 get_counter += 1
-                processUserTrackResults(user_tracks_res['collection'], depth)
+                processUserTrackResults(userID,user_tracks_res['collection'], depth)
                 counter = counter + 1
         except KeyError:
             return
@@ -149,7 +168,7 @@ def getArtistTracks(userID, depth):
 
 
 def getTrackFavoriters(trackID, depth):
-    print("getTrackFavoriters", trackID)
+    #print("getTrackFavoriters", trackID)
     try:
         global maxTrackCalls
         global get_counter
@@ -209,6 +228,7 @@ def isArtist(userID):
 
 
 if __name__ == "__main__":
-        gatherData(userID, depth)
+    initialize(userID, depth)
+    gatherData(userID, depth)
 
 
