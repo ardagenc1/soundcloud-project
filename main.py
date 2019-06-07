@@ -1,141 +1,165 @@
 import soundcloud
-import pandas as pd
 import collections
 
 
-userID = '300870231'
+userID = 300870231
 
 
 client = soundcloud.Client(client_id='ifoUhYX2sDPbwwgaMnEYpMUXFBBWMQ3l')
 
-pageSize = 200
+page_size = 200
+maxUserCalls = 1000 / page_size
+maxTrackCalls = 3000 / page_size
+artist_threshold = 3.0
+depth = 2
 
 
-# tables:
-#   Users: id, username, full_name, track_count, playlist_count, followers_count, followings_count, public_favorites_count, analyzed_flag
-#   Tracks: id, 
-#   UserTracks: userID, trackID
-# dictionary:
-#      
-#   UserFollowers: key: userID, value: list of followers
-#   UserFollowing: key: userID, value: list of following    
+users = {}
+tracks = {}
 
+user_tracks = [] 
 
-
-users_cols = ["id", "permalink", "username", "uri", "permalink_url", "avatar_url", "country",\
-              "full_name", "city", "description", "discogs_name", "myspace_name", "website", \
-              "website_title", "online", "track_count", "playlist_count", "followers_count",\
-              "followings_count","public_favorites_count"]
-users = pd.DataFrame(columns = users_cols)
-
-tracks_cols = ["id", "created_at", "user_id", "duration", "commentable", "state", "sharing", "tag_list",\
-               "permalink", "description", "streamable", "downloadable", "genre", "release", "purchase_url", \
-               "label_id", "label_name", "isrc",
-  "video_url",
-  "track_type",
-  "key_signature",
-  "bpm",
-  "title",
-  "release_year",
-  "release_month",
-  "release_day",
-  "original_format",
-  "original_content_size",
-  "license",
-  "uri",
-  "permalink_url",
-  "artwork_url",
-  "waveform_url",
-  "user",
-    "id",
-    "permalink",
-    "username",
-    "uri"
-    "permalink_url"
-  "avatar_url"
-  "stream_url"
-  "download_url"
-  "playback_count"
-  "download_count"
-  "favoritings_count"
-  "comment_count"
-  "attachments_uri"
+user_fields = ["username", "track_count", "followers_count", "followings_count","public_favorites_count"] 
+track_fields = ["id","title","track_type", "genre", "user"]
 
 
 stack = []
 Entry = collections.namedtuple('Entry', 'Type Id Depth')
 
+  
 
+def gatherData(userID,depth):
+    global stack
+    getUser(userID)
+    ent = Entry(Type=0, Id=userID, Depth=depth)
+    stack.append(ent)
+    while stack:
+        buf = stack.pop()
+        if buf.Depth == 0:
+            continue
+        else:
+            if buf.Type == 0:
+                getUserLikes(buf.Id, buf.Depth)
+                if isArtist(buf.Id):
+                    getUserFollow(buf.Id, 'followers', buf.Depth)
+                    getArtistTracks(buf.Id, buf.Depth)
+                else:
+                    getUserFollow(buf.Id, 'followings', buf.Depth)
+            else:
+                getTrackFavoriters(buf.Id, buf.Depth - 1)
+                    
+                
 
-# main(userID) -> list of recommeded tracks
-# Input : userID
-# Output: recommended track ids
-
-# getUser(userID) 
-# stack: {type: user/track; id ; depth counter}
-# push(user)
-# while (stack not empty):   
-#   buf = stack.pop
-#   if buf.depth = 0
-#        continue
-#   else:
-#       if buf.type == user: (0)
-#           getUserTracks(userID)    
-#           if isArtist(buf.id):
-#               getUserFollowers(userID, buf.depth)    
-#           else:
-#               getUserFollowing(userID, buf.depth)
-#       else if buf.type == track: (1)
-#           getTrackFavoriters(trackID, buf.depth - 1)    
-
-
-
-
-
-def getUser(iD):
+def getUser(userID):
     global users
-    user = client.get('/users/' + iD).fields()
-    user = pd.DataFrame.from_dict(user)
-    users = pd.concat([users, user], ignore_index = True)
+    user = client.get('/users/' + str(userID)).fields()
+    users[user['id']] = dict((k, user[k]) for k in user_fields)
+    
     
     
 def getUserFollow(userID, endNode, depth):
-    follow = client.get("users/" + userID + "/" + endNode, limit = page_size, linked_partitioning = 1).fields()
-    result = pd.DataFrame.from_dict(follow['collection']).set_index('id')
-    processFollowResults(result, depth)
     try:
-        while(follow['next_href']):
-            follow = client.get(follow['next_href']).fields()
-            result = pd.DataFrame.from_dict(follow['collection']).set_index('id')
-            processFollowResults(result, depth)
-    except AttributeError:    
-    return
+        follow = client.get("users/" + str(userID) + "/" + endNode, limit = page_size, linked_partitioning = 1).fields()
+        processUserResults(follow['collection'], depth)
+        counter = 0
+        try:
+            while(follow['next_href'] and counter < maxUserCalls):
+                follow = client.get(follow['next_href']).fields()
+                processUserResults(follow['collection'], depth)
+                counter = counter + 1
+        except AttributeError:
+            return
+    
+    except Exception:
+        return
 
 
-def processFollowResults(result, depth):   
+def getUserLikes(userID, depth):
+    try:
+        user_tracks_res = client.get("users/" + str(userID) + "/favorites", limit = page_size, linked_partitioning = 1).fields()
+        processUserTrackResults(userID, user_tracks_res['collection'], depth)
+        counter = 0
+        try:
+            while(user_tracks_res['next_href'] and counter < maxTrackCalls):
+                user_tracks_res = client.get(user_tracks_res['next_href']).fields()
+                processUserTrackResults(user_tracks_res['collection'], depth)
+                counter = counter + 1
+        except KeyError:
+            return   
+    except Exception:
+        return
+
+
+def getArtistTracks(userID, depth):
+    try:
+        user_tracks_res = client.get("users/" + str(userID) + "/tracks", limit = page_size, linked_partitioning = 1).fields()
+        processUserTrackResults(userID, user_tracks_res['collection'], depth)
+        counter = 0
+        try:
+            while(user_tracks_res['next_href'] and counter < maxTrackCalls):
+                user_tracks_res = client.get(user_tracks_res['next_href']).fields()
+                processUserTrackResults(user_tracks_res['collection'], depth)
+                counter = counter + 1
+        except KeyError:
+            return
+    except Exception:
+        return
+
+
+def getTrackFavoriters(trackID, depth):
+    try:
+        track_likers = client.get("tracks/" + str(trackID) + "/favoriters", limit = page_size, linked_partitioning = 1).fields()
+        processUserResults(track_likers['collection'], depth)
+        counter = 0
+        try:
+            while(track_likers['next_href'] and counter < maxTrackCalls):
+                track_likers = client.get(track_likers['next_href']).fields()
+                processUserResults(track_likers['collection'], depth)
+                counter = counter + 1
+        except KeyError:
+            return
+    except Exception:
+        return
+
+
+
+def processUserResults(results, depth):   
     global stack
-    global users         
-    for index, user in result.iterrows():
-        if not index in users.index:
-            ent = Entry(Type=0, Id=index, Depth=depth)
+    global users
+    for user in results:
+        user_id = user["id"]
+        if not user_id in users:
+            users[user_id] = dict((k, user[k]) for k in user_fields)
+            ent = Entry(Type=0, Id=user_id, Depth=depth)
             stack.append(ent)
-            users = users.append(user, ignore_index = False)
-        
+ 
+           
+
+def processUserTrackResults(userID, results, depth):   
+    global stack
+    global tracks
+    global user_tracks
+    for track in results:
+        track_id = track["id"]
+        user_tracks.append([userID, track_id])
+        if not track_id in tracks:
+            tracks[track_id] = dict((k, track[k]) for k in track_fields)
+            ent = Entry(Type=1, Id=track_id, Depth=depth)
+            stack.append(ent)
     
-    
-# getUserFollowers(userID)
-# getUsersFollowing(userID)
+
+  
+def isArtist(userID):
+    global users
+    global artist_threshold
+    if users[userID]['track_count'] == 0:
+        return False
+    else:
+        if (users[userID]['followers_count'] / (users[userID]['followings_count'] + 1) > artist_threshold) and (users[userID]['followers_count'] > 1000):
+            return True
+        else:
+            return False
 
 
-
-# getUserTracks(userdID)
-
-# getTrackFavoriters(trackID)
-
-
-
-# isArtist(userID) -> bool
-# given a userID and attributes, determine if user is an "artist" (threshold on distribution of attributes like tracks published)
-# ratio of indegree / outdegree
 
 
