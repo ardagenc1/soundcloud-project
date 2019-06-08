@@ -4,19 +4,15 @@ import numpy as np
 import pandas as pd
 import joblib
 from pdb import set_trace
-import logging
-from tqdm.auto import tqdm
-import os
-import sys
 
 
-class soundcloud_api():
+class get_data():
     def __init__(self,
                  user_id=300870231,
+                 depth=2,
                  client_id='ItE8O04ja93Qeo9H0TzvR6T3097EY02J',
                  page_size=200,
-                 artist_threshold=3.0,
-                 depth=2):
+                 artist_threshold=3.0):
 
         self.userID = user_id
         self.client_id = client_id
@@ -48,12 +44,7 @@ class soundcloud_api():
         ent = self.Entry(Type=0, Id=self.userID, Depth=self.depth)
         self.stack.append(ent)
 
-    def getUser(self, userID):
-        user = self.client.get(f'/users/{userID}').fields()
-        self.get_counter += 1
-        self.users[user['id']] = dict((k, user[k]) for k in self.user_fields)
-
-    def gatherData(self):
+    def run(self):
         write_counter = 0
         while self.stack:
             print_str = f"Stack: {len(self.stack)}   "
@@ -81,6 +72,11 @@ class soundcloud_api():
             if write_counter == 100:
                 self.save_user_tracks()
                 write_counter = 0
+
+    def getUser(self, userID):
+        user = self.client.get(f'/users/{userID}').fields()
+        self.get_counter += 1
+        self.users[user['id']] = dict((k, user[k]) for k in self.user_fields)
 
     def getUserLikes(self, userID, depth):
         try:
@@ -207,6 +203,6 @@ class soundcloud_api():
         t.to_csv('./data.csv')
 
 
-api = soundcloud_api(user_id=300870231,
-                     depth=2)
-api.gatherData()
+api = get_data(user_id=300870231,
+               depth=2)
+api.run()
