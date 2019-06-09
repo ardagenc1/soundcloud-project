@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import joblib
 from pdb import set_trace
+import os
 
 
 class get_data():
@@ -25,66 +26,58 @@ class get_data():
         self.artist_threshold = artist_threshold
         self.depth = depth
 
-        self.user_counter = 0
-        self.get_counter = 0
-
-        self.users = {}
-        self.tracks = {}
-
-        self.user_tracks = []
-
         self.user_fields = ["username", "track_count", "followers_count",
                             "followings_count", "public_favorites_count"]
         self.track_fields = ["id", "title", "track_type", "genre", "user"]
 
+        self.cache_counter = 0
+
+        self.users = {}
+        self.tracks = {}
+        self.user_tracks = []
         self.stack = []
-        self.Entry = collections.namedtuple('Entry', 'Type Id Depth')
+
+        if os.path.isfile('./users.gz'):
+            self.load_cache()
 
         self.getUser(self.userID)
-        ent = self.Entry(Type=0, Id=self.userID, Depth=self.depth)
-        self.stack.append(ent)
 
-    def run(self):
-        write_counter = 0
+        self.stack.append({'type': 0, 'id': self.userID, 'depth': self.depth})
+
+    def collect(self):
         while self.stack:
-            print_str = f"Stack: {len(self.stack)}   "
-            print_str += f"Users: {len(self.users)}   "
-            print_str += f"Tracks: {len(self.tracks)}   "
-            print_str += f"Hits: {len(self.user_tracks)}   "
-            print_str += f"Cache in: {100-write_counter}   "
-            flush_str = ' '.rjust(len(print_str), ' ')
-            print(flush_str, end='\r')
-            print(print_str, end='\r')
+            self.print_status()
             buf = self.stack.pop()
-            if buf.Depth == 0:
+            if buf['depth'] == 0:
                 continue
             else:
-                if buf.Type == 0:
-                    self.getUserLikes(buf.Id, buf.Depth - 1)
-                    if self.isArtist(buf.Id):
-                        self.getUserFollow(buf.Id, 'followers', buf.Depth)
-                        self.getArtistTracks(buf.Id, buf.Depth)
+                if buf['type'] == 0:
+                    self.getUserLikes(buf['id'], buf['depth'] - 1)
+                    if self.isArtist(buf['id']):
+                        self.getUserFollow(buf['id'],
+                                           'followers',
+                                           buf['depth'])
+                        self.getArtistTracks(buf['id'], buf['depth'])
                     else:
-                        self.getUserFollow(buf.Id, 'followings', buf.Depth)
+                        self.getUserFollow(buf['id'],
+                                           'followings',
+                                           buf['depth'])
                 else:
-                    self.getTrackFavoriters(buf.Id, buf.Depth)
-            write_counter += 1
-            if write_counter == 100:
-                self.save_user_tracks()
-                write_counter = 0
+                    self.getTrackFavoriters(buf['id'], buf['depth'])
+            self.cache_counter += 1
+            if self.cache_counter == 100:
+                self.save_cache()
+                self.cache_counter = 0
 
     def getUser(self, userID):
         user = self.client.get(f'/users/{userID}').fields()
-        self.get_counter += 1
         self.users[user['id']] = dict((k, user[k]) for k in self.user_fields)
 
     def getUserLikes(self, userID, depth):
         try:
-            self.user_counter += 1
             user_tracks_res = self.client.get(f"users/{userID}/favorites",
                                               limit=self.page_size,
                                               linked_partitioning=1).fields()
-            self.get_counter += 1
             self.processUserTrackResults(
                 userID, user_tracks_res['collection'], depth)
             try:
@@ -93,7 +86,6 @@ class get_data():
                         break
                     user_tracks_res = self.client.get(
                         user_tracks_res['next_href']).fields()
-                    self.get_counter += 1
                     self.processUserTrackResults(
                         userID, user_tracks_res['collection'], depth)
             except KeyError:
@@ -108,8 +100,7 @@ class get_data():
             if not track_id in self.tracks:
                 self.tracks[track_id] = dict(
                     (k, track[k]) for k in self.track_fields)
-                ent = self.Entry(Type=1, Id=track_id, Depth=depth)
-                self.stack.append(ent)
+                self.stack.append({'type': 1, 'id': track_id, 'depth': depth})
 
     def isArtist(self, userID):
         if self.users[userID]['track_count'] == 0:
@@ -125,14 +116,12 @@ class get_data():
             follow = self.client.get(f"users/{userID}/{endNode}",
                                      limit=self.page_size,
                                      linked_partitioning=1).fields()
-            self.get_counter += 1
             self.processUserResults(follow['collection'], depth)
             try:
                 for i in range(self.maxUserCalls):
                     if follow['next_href']:
                         break
                     follow = self.client.get(follow['next_href']).fields()
-                    self.get_counter += 1
                     self.processUserResults(follow['collection'], depth)
             except AttributeError:
                 return
@@ -146,15 +135,13 @@ class get_data():
             if not user_id in self.users:
                 self.users[user_id] = dict((k, user[k])
                                            for k in self.user_fields)
-                ent = self.Entry(Type=0, Id=user_id, Depth=depth)
-                self.stack.append(ent)
+                self.stack.append({'type': 0, 'id': user_id, 'depth': depth})
 
     def getArtistTracks(self, userID, depth):
         try:
             user_tracks_res = self.client.get(f"users/{userID}/tracks",
                                               limit=self.page_size,
                                               linked_partitioning=1).fields()
-            self.get_counter += 1
             self.processUserTrackResults(
                 userID, user_tracks_res['collection'], depth)
             try:
@@ -163,7 +150,6 @@ class get_data():
                         break
                     user_tracks_res = self.client.get(
                         user_tracks_res['next_href']).fields()
-                    self.get_counter += 1
                     self.processUserTrackResults(
                         userID, user_tracks_res['collection'], depth)
             except KeyError:
@@ -176,7 +162,6 @@ class get_data():
             track_likers = self.client.get(f"tracks/{trackID}/favoriters",
                                            limit=self.page_size,
                                            linked_partitioning=1).fields()
-            self.get_counter += 1
             self.processUserResults(track_likers['collection'], depth)
             try:
                 for i in range(self.maxTrackCalls):
@@ -184,25 +169,40 @@ class get_data():
                         break
                     track_likers = self.client.get(
                         track_likers['next_href']).fields()
-                    self.get_counter += 1
                     self.processUserResults(track_likers['collection'], depth)
             except KeyError:
                 return
         except Exception as e:
             return
 
-    def save_user_tracks(self):
-        print('Saving df')
+    def print_status(self):
+        print_str = f"Stack: {len(self.stack)}   "
+        print_str += f"Users: {len(self.users)}   "
+        print_str += f"Tracks: {len(self.tracks)}   "
+        print_str += f"Hits: {len(self.user_tracks)}   "
+        print_str += f"Cache in: {100-self.cache_counter}   "
+        flush_str = ' '.rjust(len(print_str), ' ')
+        print(flush_str, end='\r')
+        print(print_str, end='\r')
+
+    def get_model_input(self):
         y = np.array([np.array(xi) for xi in self.user_tracks])
         df = pd.DataFrame(data=y, columns=["userID", "trackID"])
-        joblib.dump(df, 'tracks.gz')
-        return
+
         # df.groupby(['user', 'product']).size().unstack(fill_value=0).to_csv('./data.csv')
-        t = pd.get_dummies(df, columns=['trackID'], prefix='', prefix_sep='').groupby(
-            ['userID']).sum()
-        t.to_csv('./data.csv')
+        # t = pd.get_dummies(df, columns=['trackID'], prefix='', prefix_sep='').groupby(
+        #     ['userID']).sum()
+        # t.to_csv('./data.csv')
+        joblib.dump(df, 'model_input.gz')
 
+    def save_cache(self):
+        joblib.dump(self.users, 'users.gz')
+        joblib.dump(self.tracks, 'tracks.gz')
+        joblib.dump(self.user_tracks, 'user_tracks.gz')
+        joblib.dump(self.stack, 'stack.gz')
 
-api = get_data(user_id=300870231,
-               depth=2)
-api.run()
+    def load_cache(self):
+        self.users = joblib.load('users.gz')
+        self.tracks = joblib.load('tracks.gz')
+        self.user_tracks = joblib.load('user_tracks.gz')
+        self.stack = joblib.load('stack.gz')
