@@ -128,35 +128,49 @@ class ncf():
         print('\n\nNEUMF MODEL SUMMARY')
         self.neumf_model.summary()
 
-    def hit_ratio(self, n=10):
+    def hit_ratio(self, model='neumf', n=10):
+        if model == 'gmf':
+            model = self.gmf_model
+        if model == 'mlp':
+            model = self.mlp_model
+        else:
+            model = self.neumf_model
+
         users = list(self.user_dict)
         num_test_users = int(len(users) * .15)
         test_users = random.sample(users, num_test_users)
 
         hits = 0
         for user in tqdm(test_users):
-            hits += self.test_user_hit_ratio(user)
+            hits += self.test_user_hit_ratio(user, model, n)
 
         ratio = hits / len(test_users)
-        set_trace()
-        return
+        print(f'\nHR @ {n}: {ratio}')
+        return ratio
 
-    def test_user_hit_ratio(self, user=163190, n=10):
+    def test_user_hit_ratio(self, user=163190, model=None, n=10):
         user_mat = self.get_user_mat(163190)
         _, nonzero = user_mat.nonzero()
 
         track = np.random.choice(nonzero, 1)[0]
-        user_mat.pop((0, track))
 
         user_mat = sparse.dok_matrix(1 - user_mat.toarray())
         inputs, items, _ = NeuMF.get_train_instances(user_mat, 0)
 
-        preds = self.neumf_model.predict_on_batch([np.array(inputs),
-                                                   np.array(items)])[:, 0]
+        inputs_sample, items_sample = zip(
+            *random.sample(list(zip(inputs, items)), 99))
+        inputs_sample = list(inputs_sample)
+        items_sample = list(items_sample)
+
+        inputs_sample.append(0)
+        items_sample.append(track)
+
+        preds = model.predict_on_batch([np.array(inputs_sample),
+                                        np.array(items_sample)])[:, 0]
 
         _, nonzero = user_mat.nonzero()
 
-        df = pd.DataFrame({'track': nonzero, 'pred': preds})
+        df = pd.DataFrame({'track': items_sample, 'pred': preds})
         df = df.sort_values('pred', ascending=False)
         df = df.reset_index(drop=True)
 
