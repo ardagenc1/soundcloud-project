@@ -186,14 +186,15 @@ class get_data():
         print(print_str, end='\r')
 
     def get_model_input(self):
+        print('Building y')
         y = np.array([np.array(xi) for xi in self.user_tracks])
+        print('Building df')
         df = pd.DataFrame(data=y, columns=["userID", "trackID"])
-
-        # df.groupby(['user', 'product']).size().unstack(fill_value=0).to_csv('./data.csv')
+        df = df.groupby(['userID', 'trackID']).size().unstack(fill_value=0)
+        joblib.dump(df, 'model_input.gz')
         # t = pd.get_dummies(df, columns=['trackID'], prefix='', prefix_sep='').groupby(
         #     ['userID']).sum()
         # t.to_csv('./data.csv')
-        joblib.dump(df, 'model_input.gz')
 
     def save_cache(self):
         joblib.dump(self.users, 'users.gz')
@@ -202,7 +203,12 @@ class get_data():
         joblib.dump(self.stack, 'stack.gz')
 
     def load_cache(self):
+        print('Loading cache:')
+        print(' - users.gz')
         self.users = joblib.load('users.gz')
+        print(' - tracks.gz')
         self.tracks = joblib.load('tracks.gz')
+        print(' - user_tracks.gz')
         self.user_tracks = joblib.load('user_tracks.gz')
+        print(' - stack.gz')
         self.stack = joblib.load('stack.gz')
