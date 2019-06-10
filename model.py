@@ -6,38 +6,58 @@ import numpy as np
 import pandas as pd
 from scipy import sparse
 import joblib
-
+from pdb import set_trace
+from keras.models import load_model
 import os
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+import random
+from tqdm.auto import tqdm
+import matplotlib.pyplot as plt
 
 
 class ncf():
     def __init__(self,
-                 matrix_path='model_input.gz',
+                 input_path='./collection/user_tracks.gz',
                  num_negatives=4):
-        self.matrix_path = matrix_path
+        self.input_path = input_path
         self.num_negatives = num_negatives
 
         early_stop = EarlyStopping(monitor='val_loss',
-                                   patience=3,
+                                   patience=4,
                                    restore_best_weights=True)
         self.callbacks = [early_stop]
 
+        for dir in ['weights', 'collection', 'plots']:
+            if not os.path.exists(dir):
+                os.makedirs(dir)
+
+        self.load()
+
     def load(self):
         print('Loading data')
-        self.sparse_mat = joblib.load(self.matrix_path)
+        self.get_model_input()
         self.get_train_data()
+
+    def get_model_input(self):
+        self.user_tracks = joblib.load(self.input_path)
+        print('Building model input')
+
+        y = np.array([np.array(xi) for xi in self.user_tracks])
+        self.tracks_df = pd.DataFrame({'user': y[:, 0], 'track': y[:, 1]})
+
+        rows, r_pos = np.unique(y[:, 0], return_inverse=True)
+        cols, c_pos = np.unique(y[:, 1], return_inverse=True)
+
+        self.user_dict = {v: i for i, v in enumerate(rows)}
+        self.track_dict = {v: i for i, v in enumerate(cols)}
+
+        self.sparse_mat = sparse.dok_matrix((len(rows), len(cols)), dtype=int)
+        self.sparse_mat[r_pos, c_pos] = 1
 
     def get_train_data(self):
         print('Building train matrices')
-        self.train_mat, self.test_mat = train_test_split(
-            self.sparse_mat, test_size=0.15)
-        self.train_mat = sparse.dok_matrix(self.train_mat)
-        self.test_mat = sparse.dok_matrix(self.test_mat)
-
         self.user_train, self.item_train, self.label_train = NeuMF.get_train_instances(
-            self.train_mat, num_negatives=self.num_negatives)
-        self.num_users_train, self.num_items_train = self.train_mat.shape
+            self.sparse_mat, num_negatives=self.num_negatives)
+        self.num_users_train, self.num_items_train = self.sparse_mat.shape
 
     def get_models(self):
         print('Getting models:')
@@ -108,6 +128,60 @@ class ncf():
         print('\n\nNEUMF MODEL SUMMARY')
         self.neumf_model.summary()
 
+    def hit_ratio(self, n=10):
+        users = list(self.user_dict)
+        num_test_users = int(len(users) * .15)
+        test_users = random.sample(users, num_test_users)
+
+        hits = 0
+        for user in tqdm(test_users):
+            hits += self.test_user_hit_ratio(user)
+
+        ratio = hits / len(test_users)
+        set_trace()
+        return
+
+    def test_user_hit_ratio(self, user=163190, n=10):
+        user_mat = self.get_user_mat(163190)
+        _, nonzero = user_mat.nonzero()
+
+        track = np.random.choice(nonzero, 1)[0]
+        user_mat.pop((0, track))
+
+        user_mat = sparse.dok_matrix(1 - user_mat.toarray())
+        inputs, items, _ = NeuMF.get_train_instances(user_mat, 0)
+
+        preds = self.neumf_model.predict_on_batch([np.array(inputs),
+                                                   np.array(items)])[:, 0]
+
+        _, nonzero = user_mat.nonzero()
+
+        df = pd.DataFrame({'track': nonzero, 'pred': preds})
+        df = df.sort_values('pred', ascending=False)
+        df = df.reset_index(drop=True)
+
+        if df[df.track == track].index[0] <= n:
+            return 1
+        return 0
+
+    def get_user_results(self, user=163190):
+        user_mat = self.get_user_mat(user)
+        user_mat = sparse.dok_matrix(1 - user_mat.toarray())
+        inputs, items, _ = NeuMF.get_train_instances(user_mat, 0)
+
+        preds = self.neumf_model.predict_on_batch([np.array(inputs),
+                                                   np.array(items)])[:, 0]
+
+        _, nonzero = user_mat.nonzero()
+
+        df = pd.DataFrame({'track': nonzero, 'pred': preds})
+        df = df.sort_values('pred', ascending=False)
+        df = df.reset_index(drop=True)
+        return df
+
+    def get_user_mat(self, user=163190):
+        return self.sparse_mat[self.user_dict[user]]
+
     def train(self):
         print('Training Models:')
         print(' - GMF')
@@ -129,7 +203,8 @@ class ncf():
                                   validation_split=0.1,
                                   verbose=1,
                                   shuffle=True)
-        self.gmf_model.save('./gmf_model.h5')
+        self.gmf_model.save('./weights/gmf_model.h5')
+        self.get_log_graph(hist, 'gmf')
 
     def train_mlp(self):
         batch_size = 256
@@ -143,7 +218,8 @@ class ncf():
                                   validation_split=0.1,
                                   verbose=1,
                                   shuffle=True)
-        self.mlp_model.save('./mlp_model.h5')
+        self.mlp_model.save('./weights/mlp_model.h5')
+        self.get_log_graph(hist, 'mlp')
 
     def train_neumf(self):
         batch_size = 256
@@ -157,4 +233,31 @@ class ncf():
                                     validation_split=0.1,
                                     verbose=1,
                                     shuffle=True)
-        self.neumf_model.save('./neumf_model.h5')
+        self.neumf_model.save('./weights/neumf_model.h5')
+        self.get_log_graph(hist, 'neumf')
+
+    def get_log_graph(self, hist, name):
+        # Plot training & validation accuracy values
+        plt.plot(hist.history['acc'])
+        plt.plot(hist.history['val_acc'])
+        plt.title(f'{name} accuracy')
+        plt.ylabel('Accuracy')
+        plt.xlabel('Epoch')
+        plt.legend(['Train', 'Test'], loc='upper left')
+        plt.savefig(f'./plots/{name}_acc.png')
+        plt.clf()
+
+        # Plot training & validation loss values
+        plt.plot(hist.history['loss'])
+        plt.plot(hist.history['val_loss'])
+        plt.title(f'{name} loss')
+        plt.ylabel('Loss')
+        plt.xlabel('Epoch')
+        plt.legend(['Train', 'Test'], loc='upper left')
+        plt.savefig(f'./plots/{name}_loss.png')
+        plt.clf()
+
+    def load_models(self):
+        self.gmf_model = load_model('./weights/gmf_model.h5')
+        self.mlp_model = load_model('./weights/mlp_model.h5')
+        self.neumf_model = load_model('./weights/neumf_model.h5')

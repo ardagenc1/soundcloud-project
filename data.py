@@ -42,8 +42,12 @@ class get_data():
 
         self.stack.append({'type': 0, 'id': self.userID, 'depth': self.depth})
 
+        for dir in ['weights', 'collection', 'plots']:
+            if not os.path.exists(dir):
+                os.makedirs(dir)
+
     def collect(self):
-        if os.path.isfile('./users.gz'):
+        if os.path.isfile('./collection/users.gz'):
             self.load_cache()
         while self.stack:
             self.print_status()
@@ -185,45 +189,20 @@ class get_data():
         print(flush_str, end='\r')
         print(print_str, end='\r')
 
-    def get_model_input(self):
-        self.load_cache(all=False)
-        print('Building pivot table')
-        y = np.array([np.array(xi) for xi in self.user_tracks])
-
-        rows, r_pos = np.unique(y[:, 0], return_inverse=True)
-        cols, c_pos = np.unique(y[:, 1], return_inverse=True)
-        pivot_table = sparse.dok_matrix((len(rows), len(cols)), dtype=int)
-        pivot_table[r_pos, c_pos] = 1
-
-        print('Dumping pivot table')
-        #sparse.save_npz('model_input.npz', pivot_table)
-        joblib.dump(pivot_table, 'model_input.gz')
-        return
-
-        # print('Building df')
-        # df = pd.DataFrame(data=y, columns=["userID", "trackID"])
-        # print('Converting df to sparse')
-        # df = df.groupby(['userID', 'trackID']).size().unstack(fill_value=0)
-        # joblib.dump(df, 'model_input.gz')
-
-        # t = pd.get_dummies(df, columns=['trackID'], prefix='', prefix_sep='').groupby(
-        #     ['userID']).sum()
-        # t.to_csv('./data.csv')
-
     def save_cache(self):
-        joblib.dump(self.users, 'users.gz')
-        joblib.dump(self.tracks, 'tracks.gz')
-        joblib.dump(self.user_tracks, 'user_tracks.gz')
-        joblib.dump(self.stack, 'stack.gz')
+        joblib.dump(self.users, './collection/users.gz')
+        joblib.dump(self.tracks, './collection/tracks.gz')
+        joblib.dump(self.user_tracks, './collection/user_tracks.gz')
+        joblib.dump(self.stack, './collection/stack.gz')
 
     def load_cache(self, all=True):
         print('Loading cache:')
         if all:
             print(' - users.gz')
-            self.users = joblib.load('users.gz')
+            self.users = joblib.load('./collection/users.gz')
             print(' - tracks.gz')
-            self.tracks = joblib.load('tracks.gz')
+            self.tracks = joblib.load('./collection/tracks.gz')
             print(' - stack.gz')
-            self.stack = joblib.load('stack.gz')
+            self.stack = joblib.load('./collection/stack.gz')
         print(' - user_tracks.gz')
-        self.user_tracks = joblib.load('user_tracks.gz')
+        self.user_tracks = joblib.load('./collection/user_tracks.gz')

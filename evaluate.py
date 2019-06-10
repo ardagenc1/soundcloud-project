@@ -6,5 +6,5 @@ ncf_models = ncf(input_path='./collection/user_tracks.gz',
 
 ncf_models.get_models()
 
-ncf_models.summary()
-ncf_models.train()
+ncf_models.load_models()
+hit_ratio = ncf_models.hit_ratio()
