@@ -109,8 +109,12 @@ class ncf():
         self.neumf_model.summary()
 
     def train(self):
+        print('Training Models:')
+        print(' - GMF')
         self.train_gmf()
+        print(' - MLP')
         self.train_mlp()
+        print(' - NeuMF')
         self.train_neumf()
 
     def train_gmf(self):
