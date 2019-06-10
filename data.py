@@ -192,12 +192,12 @@ class get_data():
 
         rows, r_pos = np.unique(y[:, 0], return_inverse=True)
         cols, c_pos = np.unique(y[:, 1], return_inverse=True)
-
-        pivot_table = np.zeros((len(rows), len(cols)))
+        pivot_table = sparse.dok_matrix((len(rows), len(cols)), dtype=int)
         pivot_table[r_pos, c_pos] = 1
-        print('Converting pivot table to sparse')
-        mat = sparse.dok_matrix(pivot_table)
-        joblib.dump(mat, 'model_input.gz')
+
+        print('Dumping pivot table')
+        #sparse.save_npz('model_input.npz', pivot_table)
+        joblib.dump(pivot_table, 'model_input.gz')
         return
 
         # print('Building df')
