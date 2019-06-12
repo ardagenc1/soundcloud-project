@@ -141,42 +141,62 @@ class ncf():
         test_users = random.sample(users, num_test_users)
 
         hits = 0
+        test_inputs = []
+        test_items = []
+        track_dict = {}
         for user in tqdm(test_users):
-            hits += self.test_user_hit_ratio(user, model, n)
+            inp, ite, tra = self.get_test_user_input(user=user)
+            test_inputs += inp
+            test_items += ite
+            track_dict[user] = tra
 
-        ratio = hits / len(test_users)
+        ratio = self.test_hit_ratio(
+            test_inputs, test_items, track_dict, model, n)
+
         print(f'\nHR @ {n}: {ratio}')
         return ratio
 
-    def test_user_hit_ratio(self, user=163190, model=None, n=10):
+    def get_test_user_input(self, user=163190):
         user_mat = self.get_user_mat(user)
         _, nonzero = user_mat.nonzero()
 
         track = np.random.choice(nonzero, 1)[0]
 
         user_mat = sparse.dok_matrix(1 - user_mat.toarray())
-        inputs, items, _ = NeuMF.get_train_instances(user_mat, 0)
+        _, items, _ = NeuMF.get_train_instances(user_mat, 0)
 
-        inputs_sample, items_sample = zip(
-            *random.sample(list(zip(inputs, items)), 99))
-        inputs_sample = list(inputs_sample)
+        items_sample = random.sample(items, 99)
         items_sample = list(items_sample)
 
-        inputs_sample.append(0)
+        inputs_sample = [self.user_dict[user] for i in range(100)]
         items_sample.append(track)
+        return inputs_sample, items_sample, track
 
-        preds = model.predict_on_batch([np.array(inputs_sample),
-                                        np.array(items_sample)])[:, 0]
+    def test_hit_ratio(self, inputs, items, track_dict, model=None, n=10):
 
-        _, nonzero = user_mat.nonzero()
+        preds = model.predict_on_batch([np.array(inputs),
+                                        np.array(items)])
 
-        df = pd.DataFrame({'track': items_sample, 'pred': preds})
-        df = df.sort_values('pred', ascending=False)
+        rev_user_dict = {v: k for k, v in self.user_dict.items()}
+
+        df = pd.DataFrame({'user': inputs,
+                           'track': items,
+                           'pred': preds[:, 0]})
+        df.user = df.user.apply(lambda x: rev_user_dict[x])
+
+        df = df.groupby('user').head(n).sort_values(
+            ['user', 'pred'], ascending=False)
         df = df.reset_index(drop=True)
 
-        if df[df.track == track].index[0] <= n:
-            return 1
-        return 0
+        hits = 0
+
+        for user in track_dict:
+            if ((df['user'] == user) & (df['track'] == track_dict[user])).any():
+                hits += 1
+
+        ratio = hits / len(track_dict)
+
+        return ratio
 
     def get_user_results(self, user=163190):
         user_mat = self.get_user_mat(user)
