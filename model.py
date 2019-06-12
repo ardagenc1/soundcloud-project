@@ -203,6 +203,8 @@ class ncf():
         user_mat = sparse.dok_matrix(1 - user_mat.toarray())
         inputs, items, _ = NeuMF.get_train_instances(user_mat, 0)
 
+        inputs = [self.user_dict[user] for i in range(len(inputs))]
+
         preds = self.neumf_model.predict_on_batch([np.array(inputs),
                                                    np.array(items)])[:, 0]
 
