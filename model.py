@@ -149,7 +149,7 @@ class ncf():
         return ratio
 
     def test_user_hit_ratio(self, user=163190, model=None, n=10):
-        user_mat = self.get_user_mat(163190)
+        user_mat = self.get_user_mat(user)
         _, nonzero = user_mat.nonzero()
 
         track = np.random.choice(nonzero, 1)[0]
