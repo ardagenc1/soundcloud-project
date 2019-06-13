@@ -1,2 +1,2 @@
 # soundcloud-project
-Link prediction on SoundCLoud
+Song Recommendation on SoundCloud
